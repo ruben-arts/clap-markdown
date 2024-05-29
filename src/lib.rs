@@ -12,7 +12,7 @@ mod test_readme {
     #![doc = include_str!("../README.md")]
 }
 
-
+use std::collections::HashMap;
 use std::fmt::{self, Write};
 
 use clap::builder::PossibleValue;
@@ -76,11 +76,11 @@ fn write_help_markdown(buffer: &mut String, command: &clap::Command) {
     // build_table_of_contents_html(buffer, Vec::new(), command, 0).unwrap();
     // writeln!(buffer, "</ul></div>").unwrap();
 
-    writeln!(buffer, "**Command Overview:**\n").unwrap();
-
-    build_table_of_contents_markdown(buffer, Vec::new(), command, 0).unwrap();
-
-    write!(buffer, "\n").unwrap();
+    // writeln!(buffer, "**Command Overview:**\n").unwrap();
+    //
+    // build_table_of_contents_markdown(buffer, Vec::new(), command, 0).unwrap();
+    //
+    // write!(buffer, "\n").unwrap();
 
     //----------------------------------------
     // Write the commands/subcommands sections
@@ -263,7 +263,7 @@ fn build_command_markdown(
     //----------------------------------
 
     if command.get_subcommands().next().is_some() {
-        writeln!(buffer, "###### **Subcommands:**\n")?;
+        writeln!(buffer, "##### **Subcommands:**\n")?;
 
         for subcommand in command.get_subcommands() {
             if subcommand.is_hide_set() {
@@ -289,7 +289,7 @@ fn build_command_markdown(
     //----------------------------------
 
     if command.get_positionals().next().is_some() {
-        writeln!(buffer, "###### **Arguments:**\n")?;
+        writeln!(buffer, "##### **Arguments:**\n")?;
 
         for pos_arg in command.get_positionals() {
             write_arg_markdown(buffer, pos_arg)?;
@@ -307,11 +307,27 @@ fn build_command_markdown(
         .filter(|arg| !arg.is_positional())
         .collect();
 
-    if !non_pos.is_empty() {
-        writeln!(buffer, "###### **Options:**\n")?;
+    // Sort and insert into map by help_heading
+    let mut help_heading_map = HashMap::new();
+    for arg in non_pos {
+        let help_heading = arg.get_help_heading().unwrap_or_else(|| "");
+        help_heading_map
+            .entry(help_heading)
+            .or_insert_with(Vec::new)
+            .push(arg);
+    }
 
-        for arg in non_pos {
-            write_arg_markdown(buffer, arg)?;
+    if !help_heading_map.is_empty() {
+        writeln!(buffer, "##### **Options:**\n")?;
+
+        for (help_heading, args) in help_heading_map {
+            if !help_heading.is_empty() {
+                writeln!(buffer, "###### **{}**\n", help_heading)?;
+            }
+
+            for arg in args {
+                write_arg_markdown(buffer, arg)?;
+            }
         }
 
         write!(buffer, "\n")?;
@@ -337,9 +353,101 @@ fn build_command_markdown(
     Ok(())
 }
 
+/// Writing the default values of the argument to a string
+fn write_default_arg_values(arg: &clap::Arg) -> String {
+    if !arg.get_default_values().is_empty() {
+        let default_values: String = arg
+            .get_default_values()
+            .iter()
+            .map(|value| format!("`{}`", value.to_string_lossy()))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        let s = if arg.get_default_values().len() > 1 {
+            "s"
+        } else {
+            ""
+        };
+        format!("\t- Default value{s}: {default_values}\n")
+    } else {
+        // No default values
+        "".to_string()
+    }
+}
+
+/// Writing the possible values of the argument to a string
+fn write_possible_arg_values(
+    buffer: &mut String,
+    arg: &clap::Arg,
+) -> fmt::Result {
+    let possible_values: Vec<PossibleValue> = arg
+        .get_possible_values()
+        .into_iter()
+        .filter(|pv| !pv.is_hide_set())
+        .collect();
+
+    if !possible_values.is_empty() {
+        let any_have_help: bool =
+            possible_values.iter().any(|pv| pv.get_help().is_some());
+
+        if any_have_help {
+            // If any of the possible values have help text, print them
+            // as a separate item in a bulleted list, and include the
+            // help text for those that have it. E.g.:
+            //
+            //     Possible values:
+            //     - `value1`:
+            //       The help text
+            //     - `value2`
+            //     - `value3`:
+            //       The help text
+
+            let text: String = possible_values
+                .iter()
+                .map(|pv| match pv.get_help() {
+                    Some(help) => {
+                        format!("\t\t- `{}`:\n\t\t\t{}\n", pv.get_name(), help)
+                    },
+                    None => format!("\t\t- `{}`\n", pv.get_name()),
+                })
+                .collect::<Vec<String>>()
+                .join("");
+
+            writeln!(buffer, "\t- Possible values:\n{text}")?;
+        } else {
+            // If none of the possible values have any documentation, print
+            // them all inline on a single line.
+            let text: String = possible_values
+                .iter()
+                // TODO: Show PossibleValue::get_help(), and PossibleValue::get_name_and_aliases().
+                .map(|pv| format!("`{}`", pv.get_name()))
+                .collect::<Vec<String>>()
+                .join(", ");
+
+            writeln!(buffer, "\t- Possible values: {text}\n")?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Writing the help text of the argument to a string
+fn write_arg_help(arg: &clap::Arg) -> String {
+    if let Some(help) = arg.get_long_help() {
+        dbg!(help);
+
+        format!("\n\t{}\n\n", help.to_string().replace("\n", "\n\t")) //.lines().map(|line| format!("\t{}", line)).collect::<Vec<_>>().join("\n"))
+    } else if let Some(help) = arg.get_help() {
+        format!("\n\t{help}\n\n")
+    } else {
+        "".to_string()
+    }
+}
+
+/// Write the markdown for a single argument
 fn write_arg_markdown(buffer: &mut String, arg: &clap::Arg) -> fmt::Result {
     // Markdown list item
-    write!(buffer, "* ")?;
+    write!(buffer, "- ")?;
 
     let value_name: String = match arg.get_value_names() {
         // TODO: What if multiple names are provided?
@@ -374,89 +482,28 @@ fn write_arg_markdown(buffer: &mut String, arg: &clap::Arg) -> fmt::Result {
         },
         (None, None) => {
             debug_assert!(arg.is_positional(), "unexpected non-positional Arg with neither short nor long name: {arg:?}");
-
             write!(buffer, "`<{value_name}>`",)?;
         },
     }
 
-    if let Some(help) = arg.get_help() {
-        writeln!(buffer, " — {help}")?;
-    } else {
-        writeln!(buffer)?;
-    }
+    writeln!(buffer, "")?;
+
+    //--------------------
+    // Arg help text
+    //--------------------
+    write!(buffer, "{}", write_arg_help(arg))?;
 
     //--------------------
     // Arg default values
     //--------------------
-
-    if !arg.get_default_values().is_empty() {
-        let default_values: String = arg
-            .get_default_values()
-            .iter()
-            .map(|value| format!("`{}`", value.to_string_lossy()))
-            .collect::<Vec<String>>()
-            .join(", ");
-
-        if arg.get_default_values().len() > 1 {
-            // Plural
-            writeln!(buffer, "\n  Default values: {default_values}")?;
-        } else {
-            // Singular
-            writeln!(buffer, "\n  Default value: {default_values}")?;
-        }
-    }
+    write!(buffer, "{}", write_default_arg_values(arg))?;
 
     //--------------------
     // Arg possible values
     //--------------------
+    write_possible_arg_values(buffer, arg)?;
 
-    let possible_values: Vec<PossibleValue> = arg
-        .get_possible_values()
-        .into_iter()
-        .filter(|pv| !pv.is_hide_set())
-        .collect();
-
-    if !possible_values.is_empty() {
-        let any_have_help: bool =
-            possible_values.iter().any(|pv| pv.get_help().is_some());
-
-        if any_have_help {
-            // If any of the possible values have help text, print them
-            // as a separate item in a bulleted list, and include the
-            // help text for those that have it. E.g.:
-            //
-            //     Possible values:
-            //     - `value1`:
-            //       The help text
-            //     - `value2`
-            //     - `value3`:
-            //       The help text
-
-            let text: String = possible_values
-                .iter()
-                .map(|pv| match pv.get_help() {
-                    Some(help) => {
-                        format!("  - `{}`:\n    {}\n", pv.get_name(), help)
-                    },
-                    None => format!("  - `{}`\n", pv.get_name()),
-                })
-                .collect::<Vec<String>>()
-                .join("");
-
-            writeln!(buffer, "\n  Possible values:\n{text}")?;
-        } else {
-            // If none of the possible values have any documentation, print
-            // them all inline on a single line.
-            let text: String = possible_values
-                .iter()
-                // TODO: Show PossibleValue::get_help(), and PossibleValue::get_name_and_aliases().
-                .map(|pv| format!("`{}`", pv.get_name()))
-                .collect::<Vec<String>>()
-                .join(", ");
-
-            writeln!(buffer, "\n  Possible values: {text}\n")?;
-        }
-    }
+    writeln!(buffer, "")?;
 
     Ok(())
 }
