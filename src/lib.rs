@@ -12,7 +12,7 @@ mod test_readme {
     #![doc = include_str!("../README.md")]
 }
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt::{self, Write};
 
 use clap::builder::PossibleValue;
@@ -226,9 +226,9 @@ fn build_command_markdown(
     writeln!(
         buffer,
         "{} `{}`\n",
-        // "#".repeat(depth + 1),
-        "##",
-        command_path.join(" "),
+        "#".repeat(depth + 2),
+        // "##",
+        command_path.last().unwrap_or(&"".to_string()),
     )?;
 
     if let Some(long_about) = command.get_long_about() {
@@ -308,7 +308,7 @@ fn build_command_markdown(
         .collect();
 
     // Sort and insert into map by help_heading
-    let mut help_heading_map = HashMap::new();
+    let mut help_heading_map = BTreeMap::new();
     for arg in non_pos {
         let help_heading = arg.get_help_heading().unwrap_or_else(|| "");
         help_heading_map
