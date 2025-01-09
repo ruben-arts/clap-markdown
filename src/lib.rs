@@ -101,6 +101,7 @@ fn write_help_markdown(buffer: &mut String, command: &clap::Command) {
 "#).unwrap();
 }
 
+#[allow(unused)]
 fn build_table_of_contents_markdown(
     buffer: &mut String,
     // Parent commands of `command`.
@@ -446,6 +447,9 @@ fn write_arg_help(arg: &clap::Arg) -> String {
 
 /// Write the markdown for a single argument
 fn write_arg_markdown(buffer: &mut String, arg: &clap::Arg) -> fmt::Result {
+    if arg.is_hide_set() {
+        return Ok(());
+    }
     // Markdown list item
     write!(buffer, "- ")?;
 
@@ -458,23 +462,25 @@ fn write_arg_markdown(buffer: &mut String, arg: &clap::Arg) -> fmt::Result {
         None => arg.get_id().to_string().to_ascii_uppercase(),
     };
 
+    let arg_takes_values = arg.get_action().takes_values();
+
     match (arg.get_short(), arg.get_long()) {
         (Some(short), Some(long)) => {
-            if arg.get_action().takes_values() {
+            if arg_takes_values {
                 write!(buffer, "`-{short}`, `--{long} <{value_name}>`")?
             } else {
                 write!(buffer, "`-{short}`, `--{long}`")?
             }
         },
         (Some(short), None) => {
-            if arg.get_action().takes_values() {
+            if arg_takes_values {
                 write!(buffer, "`-{short} <{value_name}>`")?
             } else {
                 write!(buffer, "`-{short}`")?
             }
         },
         (None, Some(long)) => {
-            if arg.get_action().takes_values() {
+            if arg_takes_values {
                 write!(buffer, "`--{} <{value_name}>`", long)?
             } else {
                 write!(buffer, "`--{}`", long)?
@@ -493,15 +499,17 @@ fn write_arg_markdown(buffer: &mut String, arg: &clap::Arg) -> fmt::Result {
     //--------------------
     write!(buffer, "{}", write_arg_help(arg))?;
 
-    //--------------------
-    // Arg default values
-    //--------------------
-    write!(buffer, "{}", write_default_arg_values(arg))?;
+    if arg_takes_values {
+        //--------------------
+        // Arg default values
+        //--------------------
+        write!(buffer, "{}", write_default_arg_values(arg))?;
 
-    //--------------------
-    // Arg possible values
-    //--------------------
-    write_possible_arg_values(buffer, arg)?;
+        //--------------------
+        // Arg possible values
+        //--------------------
+        write_possible_arg_values(buffer, arg)?;
+    }
 
     writeln!(buffer, "")?;
 
